@@ -3,7 +3,6 @@ package auction.actors.common
 import akka.actor.{Actor, ActorRef, Props}
 import akka.event.LoggingReceive
 import auction.Config
-import auction.actors.become.Auction
 import auction.actors.common.AuctionManager._
 import auction.model.Item
 
@@ -13,10 +12,10 @@ object AuctionManager {
 
   private case object TryRelist
 
-  val props: Props = Props(new AuctionManager)
+  def props(auctionFactory: Item => Props): Props = Props(new AuctionManager(auctionFactory))
 }
 
-class AuctionManager extends Actor {
+class AuctionManager(private val auctionFactory: Item => Props) extends Actor {
   override def receive: Receive = preInit
 
   val preInit: Receive = LoggingReceive {
@@ -60,7 +59,7 @@ class AuctionManager extends Actor {
     items.zipWithIndex.map {
       case (item, index) =>
         val actorName = s"auction-${index + 1}"
-        val auctionActor = context.actorOf(Auction.props(item), actorName)
+        val auctionActor = context.actorOf(auctionFactory(item), actorName)
         item -> auctionActor
     }.toMap
   }

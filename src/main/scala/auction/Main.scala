@@ -2,8 +2,10 @@ package auction
 
 import java.util.concurrent.TimeUnit
 
-import akka.actor.ActorSystem
+import akka.actor.{ActorSystem, Props}
+import auction.actors.become.AuctionBecome
 import auction.actors.common.AuctionManager
+import auction.actors.fsm.AuctionFsm
 import auction.model.Item
 
 import scala.concurrent.Await
@@ -20,20 +22,25 @@ object Config {
 }
 
 object Main extends App {
-  val system = ActorSystem("auction-system")
+  runWith(AuctionFsm.props)
+  runWith(AuctionBecome.props)
 
-  val manager = system.actorOf(AuctionManager.props, "auction-manager")
-  val items = {
-    def createItem(number: Int) = {
-      val name = s"Item #$number"
-      Item(name)
+  def runWith(propsFactory: Item => Props) = {
+    val system = ActorSystem("auction-system")
+
+    val manager = system.actorOf(AuctionManager.props(propsFactory), "auction-manager")
+    val items = {
+      def createItem(number: Int) = {
+        val name = s"Item #$number"
+        Item(name)
+      }
+
+      val itemNumbers = (1 to Config.AuctionCount).toList
+      itemNumbers map createItem
     }
 
-    val itemNumbers = (1 to Config.AuctionCount).toList
-    itemNumbers map createItem
+    manager ! AuctionManager.Init(items)
+
+    Await.ready(system.whenTerminated, Duration.Inf)
   }
-
-  manager ! AuctionManager.Init(items)
-
-  Await.ready(system.whenTerminated, Duration.Inf)
 }

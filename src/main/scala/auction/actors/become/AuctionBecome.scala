@@ -3,29 +3,23 @@ package auction.actors.become
 import akka.actor.{Actor, ActorRef, Cancellable, Props}
 import akka.event.LoggingReceive
 import auction.Config
-import auction.actors.become.Auction._
+import auction.actors.become.AuctionBecome._
+import auction.actors.common.Auction._
 import auction.actors.common.{AuctionManager, Buyer}
 import auction.model.Item
 
 import scala.concurrent.duration.FiniteDuration
 
-object Auction {
-  def props(item: Item): Props = Props(new Auction(item))
-
-  case object Start
-  case object Relist
-  case class Bid(value: BigDecimal)
-
-  private case object BiddingTimePassed
-  private case object DeleteTimePassed
+object AuctionBecome {
+  def props(item: Item): Props = Props(new AuctionBecome(item))
 
   private case class CurrentBid(value: BigDecimal, buyer: ActorRef)
 
-  private val BiddingTime = Config.AuctionBiddingTime
-  private val DeleteTime = Config.AuctionDeleteTime
+  private case object BiddingTimePassed
+  private case object DeleteTimePassed
 }
 
-class Auction(private val item: Item) extends Actor {
+class AuctionBecome(private val item: Item) extends Actor {
 
   override def receive: Receive = initial
 
@@ -76,9 +70,9 @@ class Auction(private val item: Item) extends Actor {
     context become created
   }
 
-  private def startBidTimer(): Cancellable = startTimer(BiddingTime, BiddingTimePassed)
+  private def startBidTimer(): Cancellable = startTimer(Config.AuctionBiddingTime, BiddingTimePassed)
 
-  private def startDeleteTimer(): Cancellable = startTimer(DeleteTime, DeleteTimePassed)
+  private def startDeleteTimer(): Cancellable = startTimer(Config.AuctionDeleteTime, DeleteTimePassed)
 
   private def startTimer(time: FiniteDuration, message: Any): Cancellable = {
     import context.dispatcher

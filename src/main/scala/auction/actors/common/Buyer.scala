@@ -5,7 +5,6 @@ import java.util.concurrent.TimeUnit
 import akka.actor.{Actor, ActorRef, Props}
 import akka.event.LoggingReceive
 import auction.Config
-import auction.actors.become.Auction
 import auction.actors.common.Buyer._
 import auction.model.Item
 
