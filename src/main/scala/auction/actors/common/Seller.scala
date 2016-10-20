@@ -3,19 +3,19 @@ package auction.actors.common
 import akka.actor.{Actor, ActorRef, Props}
 import akka.event.LoggingReceive
 import auction.Config
-import auction.actors.common.AuctionManager._
+import auction.actors.common.Seller._
 import auction.model.Item
 
-object AuctionManager {
+object Seller {
   case class Init(items: List[Item])
   case class AuctionEnded(item: Item)
 
   private case object TryRelist
 
-  def props(auctionFactory: Item => Props): Props = Props(new AuctionManager(auctionFactory))
+  def props(auctionFactory: Item => Props): Props = Props(new Seller(auctionFactory))
 }
 
-class AuctionManager(private val auctionFactory: Item => Props) extends Actor {
+class Seller(private val auctionFactory: Item => Props) extends Actor {
   override def receive: Receive = preInit
 
   val preInit: Receive = LoggingReceive {

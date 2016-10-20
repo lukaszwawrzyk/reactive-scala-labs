@@ -5,7 +5,7 @@ import akka.event.LoggingReceive
 import auction.Config
 import auction.actors.become.AuctionBecome._
 import auction.actors.common.Auction._
-import auction.actors.common.{AuctionManager, Buyer}
+import auction.actors.common.{Seller, Buyer}
 import auction.model.Item
 
 import scala.concurrent.duration.FiniteDuration
@@ -61,7 +61,7 @@ class AuctionBecome(private val item: Item) extends Actor {
   }
 
   private def auctionEnded() = {
-    context.parent ! AuctionManager.AuctionEnded(item)
+    context.parent ! Seller.AuctionEnded(item)
     context stop self
   }
 

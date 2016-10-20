@@ -3,7 +3,7 @@ package auction.actors.fsm
 import akka.actor.{ActorRef, FSM, Props}
 import auction.Config
 import auction.actors.common.Auction._
-import auction.actors.common.{AuctionManager, Buyer}
+import auction.actors.common.{Seller, Buyer}
 import auction.actors.fsm.AuctionFsm._
 import auction.model.Item
 
@@ -71,10 +71,14 @@ class AuctionFsm(private val item: Item) extends FSM[State, Data] {
       setTimer("auction bidding time", BiddingTimePassed, Config.AuctionBiddingTime, repeat = false)
   }
 
+  whenUnhandled {
+    case _ => stay
+  }
+
   initialize()
 
   private def auctionEnded(): State = {
-    context.parent ! AuctionManager.AuctionEnded(item)
+    context.parent ! Seller.AuctionEnded(item)
     stop()
   }
 }

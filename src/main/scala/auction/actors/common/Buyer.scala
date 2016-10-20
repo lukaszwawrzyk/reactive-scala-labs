@@ -18,14 +18,18 @@ object Buyer {
   private case object TimeToBid
 
   private val ZeroDuration = FiniteDuration(0, TimeUnit.SECONDS)
-  private val BidInterval = Config.BuyerBiddingInterval
 
   def props(auctions: TraversableOnce[ActorRef]): Props = Props(new Buyer(auctions.toList))
 }
 
 class Buyer(private val auctions: List[ActorRef]) extends Actor {
   private val bidTimerToken = {
-    context.system.scheduler.schedule(ZeroDuration, BidInterval, self, TimeToBid)(context.dispatcher)
+    context.system.scheduler.schedule(
+      initialDelay = ZeroDuration,
+      interval = Config.BuyerBiddingInterval,
+      receiver = self,
+      message = TimeToBid
+    )(context.dispatcher)
   }
 
   override def receive: Receive = LoggingReceive {

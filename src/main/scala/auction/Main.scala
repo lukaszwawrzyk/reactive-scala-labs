@@ -4,7 +4,7 @@ import java.util.concurrent.TimeUnit
 
 import akka.actor.{ActorSystem, Props}
 import auction.actors.become.AuctionBecome
-import auction.actors.common.AuctionManager
+import auction.actors.common.Seller
 import auction.actors.fsm.AuctionFsm
 import auction.model.Item
 
@@ -28,7 +28,7 @@ object Main extends App {
   def runWith(propsFactory: Item => Props) = {
     val system = ActorSystem("auction-system")
 
-    val manager = system.actorOf(AuctionManager.props(propsFactory), "auction-manager")
+    val manager = system.actorOf(Seller.props(propsFactory), "auction-manager")
     val items = {
       def createItem(number: Int) = {
         val name = s"Item #$number"
@@ -39,7 +39,7 @@ object Main extends App {
       itemNumbers map createItem
     }
 
-    manager ! AuctionManager.Init(items)
+    manager ! Seller.Init(items)
 
     Await.ready(system.whenTerminated, Duration.Inf)
   }
