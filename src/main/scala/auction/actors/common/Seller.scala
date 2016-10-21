@@ -6,6 +6,8 @@ import auction.Config
 import auction.actors.common.Seller._
 import auction.model.Item
 
+import scala.util.Random
+
 object Seller {
   case class Init(items: List[Item])
   case class AuctionEnded(item: Item)
@@ -21,21 +23,18 @@ class Seller(private val auctionFactory: Item => Props) extends Actor {
   val preInit: Receive = LoggingReceive {
     case Init(items) =>
       val auctions = createAndStartAuctions(items)
-      val buyers = createBuyers(auctions.values.toList)
       startRelistTimer()
-      context become awaitingAuctionsEnd(auctions, buyers)
+      context become awaitingAuctionsEnd(auctions)
   }
 
-  def awaitingAuctionsEnd(auctions: Map[Item, ActorRef], buyers: List[ActorRef]): Receive = LoggingReceive {
+  def awaitingAuctionsEnd(auctions: Map[Item, ActorRef]): Receive = LoggingReceive {
     case AuctionEnded(item @ Item(itemName)) =>
       val updatedAuctions = auctions - item
 
       if (updatedAuctions.isEmpty) {
-        buyers foreach (_ ! Buyer.Stop)
-        context.system.terminate()
-        println("Last auction ended, terminating...")
+        context stop self
       } else {
-        context become awaitingAuctionsEnd(updatedAuctions, buyers)
+        context become awaitingAuctionsEnd(updatedAuctions)
       }
     case TryRelist =>
       val auctionsToAttemptRelist = auctions.values.filter(_ => scala.util.Random.nextBoolean())
@@ -56,19 +55,10 @@ class Seller(private val auctionFactory: Item => Props) extends Actor {
   }
 
   def createAuctions(items: List[Item]): Map[Item, ActorRef] = {
-    items.zipWithIndex.map {
-      case (item, index) =>
-        val actorName = s"auction-${index + 1}"
-        val auctionActor = context.actorOf(auctionFactory(item), actorName)
-        item -> auctionActor
+    items.map { item =>
+      val actorName = s"auction-${Random.nextInt()}"
+      val auctionActor = context.actorOf(auctionFactory(item), actorName)
+      item -> auctionActor
     }.toMap
-  }
-
-  private def createBuyers(auctionActors: List[ActorRef]): List[ActorRef] = {
-    val buyerIndices = (1 to Config.BuyersCount).toList
-    buyerIndices map { id =>
-      val actorName = s"buyer-$id"
-      context.actorOf(Buyer.props(auctionActors), actorName)
-    }
   }
 }

@@ -3,9 +3,9 @@ package auction.actors.fsm
 import akka.actor.{ActorRef, FSM, Props}
 import auction.Config
 import auction.actors.common.Auction._
-import auction.actors.common.{Seller, Buyer}
+import auction.actors.common.{Auction, Buyer, Seller}
 import auction.actors.fsm.AuctionFsm._
-import auction.model.Item
+import auction.model._
 
 object AuctionFsm {
   def props(item: Item): Props = Props(new AuctionFsm(item))
@@ -19,12 +19,12 @@ object AuctionFsm {
 
   sealed trait Data
   private case object NoBid extends Data
-  private case class CurrentBid(value: BigDecimal, buyer: ActorRef) extends Data
+  private case class CurrentBid(value: Money, buyer: ActorRef) extends Data
 
   private case object BiddingTimePassed
 }
 
-class AuctionFsm(private val item: Item) extends FSM[State, Data] {
+class AuctionFsm(val item: Item) extends FSM[State, Data] with Auction {
   startWith(Idle, NoBid)
 
   when (Idle) {
@@ -49,8 +49,10 @@ class AuctionFsm(private val item: Item) extends FSM[State, Data] {
   }
 
   when (Activated) {
-    case Event(Bid(value), CurrentBid(currentBidValue, _)) if value > currentBidValue =>
-      stay using CurrentBid(value, sender)
+    case Event(Bid(newBidValue), CurrentBid(currentBidValue, currentBuyer)) if newBidValue > currentBidValue =>
+      println(s"item ${item.name} now has value $newBidValue")
+      currentBuyer ! Buyer.OfferOverbid(newBidValue)
+      stay using CurrentBid(newBidValue, sender)
     case Event(BiddingTimePassed, CurrentBid(value, buyer)) =>
       goto (Sold)
   }
@@ -62,13 +64,18 @@ class AuctionFsm(private val item: Item) extends FSM[State, Data] {
 
   onTransition {
     case Activated -> Sold =>
+      unregisterInAuctionSearch()
       stateData match {
         case CurrentBid(value, buyer) =>
           buyer ! Buyer.AuctionWon(item, price = value)
         case _ => ()
       }
+    case _ -> Sold | _ -> Ignored =>
+      unregisterInAuctionSearch()
     case _ -> Created =>
-      setTimer("auction bidding time", BiddingTimePassed, Config.AuctionBiddingTime, repeat = false)
+      registerInAuctionSearch()
+      startBiddingTimer()
+
   }
 
   whenUnhandled {
@@ -76,6 +83,10 @@ class AuctionFsm(private val item: Item) extends FSM[State, Data] {
   }
 
   initialize()
+
+  private def startBiddingTimer(): Unit = {
+    setTimer("auction bidding time", BiddingTimePassed, Config.AuctionBiddingTime, repeat = false)
+  }
 
   private def auctionEnded(): State = {
     context.parent ! Seller.AuctionEnded(item)

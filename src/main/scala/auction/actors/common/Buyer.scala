@@ -1,55 +1,71 @@
 package auction.actors.common
 
-import java.util.concurrent.TimeUnit
-
 import akka.actor.{Actor, ActorRef, Props}
-import akka.event.LoggingReceive
 import auction.Config
 import auction.actors.common.Buyer._
-import auction.model.Item
+import auction.model._
 
-import scala.concurrent.duration.FiniteDuration
-
+import scala.language.implicitConversions
+import scala.util.Random
 
 object Buyer {
-  case class AuctionWon(item: Item, price: BigDecimal)
-  case object Stop
+  case class OfferOverbid(offerValue: Money)
+  case class AuctionWon(item: Item, price: Money)
+  case object Start
 
-  private case object TimeToBid
+  def props(auctionNameKeyword: String, budget: Money): Props = Props(new Buyer(auctionNameKeyword, budget))
 
-  private val ZeroDuration = FiniteDuration(0, TimeUnit.SECONDS)
-
-  def props(auctions: TraversableOnce[ActorRef]): Props = Props(new Buyer(auctions.toList))
+  implicit def func0ToRunnable(f: () => Unit): Runnable = new Runnable { override def run(): Unit = f() }
 }
 
-class Buyer(private val auctions: List[ActorRef]) extends Actor {
-  private val bidTimerToken = {
-    context.system.scheduler.schedule(
-      initialDelay = ZeroDuration,
-      interval = Config.BuyerBiddingInterval,
-      receiver = self,
-      message = TimeToBid
-    )(context.dispatcher)
+class Buyer(
+  auctionNameKeyword: String,
+  budget: Money
+) extends Actor {
+
+  override def receive: Receive = idle
+
+  lazy val idle: Receive = {
+    case Start =>
+      sendSearchQuery()
+      context become awaitingAuctions
   }
 
-  override def receive: Receive = LoggingReceive {
-    case TimeToBid =>
-      randomAuction() ! randomBid()
+  lazy val awaitingAuctions: Receive = {
+    case AuctionSearch.MatchingAuctions(auctions) =>
+      Random.shuffle(auctions).headOption.fold[Unit]{
+        context.system.scheduler.scheduleOnce(Config.SearchRetryDelay, () => sendSearchQuery())(context.dispatcher)
+      } { auction =>
+        auction ! randomBid()
+        context become bidding(auction)
+      }
+  }
+
+  def bidding(auction: ActorRef): Receive = {
+    case OfferOverbid(overbidValue) =>
+      val nextBid = overbidValue + Config.MinBidDelta
+      if (nextBid <= budget) {
+        log(s"retrying with $nextBid after being overbid (limit $budget)")
+        auction ! Auction.Bid(nextBid)
+      } else {
+        log("out of money")
+        context stop self
+      }
     case AuctionWon(Item(itemName), price) =>
-      println(s"I (${context.self.path.name}) bought $itemName for $price")
-    case Stop =>
-      bidTimerToken.cancel()
+      log(s"bought $itemName for $price")
       context stop self
   }
 
-  private def randomAuction() = {
-    val index = scala.util.Random.nextInt(auctions.size)
-    auctions(index)
+  private def sendSearchQuery(): Unit = {
+    context.actorSelection(Config.AuctionSearchPath) ! AuctionSearch.Search(auctionNameKeyword)
   }
 
   private def randomBid() = {
-    val bidValueInCents = BigDecimal(scala.util.Random.nextInt(200000))
-    val bidValue = bidValueInCents / 100
+    val bidValue = Random.nextInt(budget.toInt / 2)
     Auction.Bid(bidValue)
+  }
+
+  private def log(message: String): Unit = {
+    println(s"[${context.self.path.name}] $message")
   }
 }
