@@ -33,7 +33,7 @@ class Buyer(
 
   lazy val awaitingAuctions: Receive = {
     case AuctionSearch.MatchingAuctions(auctions) =>
-      Random.shuffle(auctions).headOption.fold[Unit]{
+      Random.shuffle(auctions.toSeq).headOption.fold[Unit]{
         context.system.scheduler.scheduleOnce(Config.SearchRetryDelay, () => sendSearchQuery())(context.dispatcher)
       } { auction =>
         auction ! randomBid()

@@ -11,15 +11,15 @@ object AuctionFsm {
   def props(item: Item): Props = Props(new AuctionFsm(item))
 
   sealed trait State
-  private case object Idle extends State
-  private case object Created extends State
-  private case object Ignored extends State
-  private case object Activated extends State
-  private case object Sold extends State
+  case object Idle extends State
+  case object Created extends State
+  case object Ignored extends State
+  case object Activated extends State
+  case object Sold extends State
 
   sealed trait Data
-  private case object NoBid extends Data
-  private case class CurrentBid(value: Money, buyer: ActorRef) extends Data
+  case object NoBid extends Data
+  case class CurrentBid(value: Money, buyer: ActorRef) extends Data
 
   private case object BiddingTimePassed
 }

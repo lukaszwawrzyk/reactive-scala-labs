@@ -10,7 +10,7 @@ object AuctionSearch {
   case class Search(pattern: String)
   case class RegisterAuction(item: Item, actor: ActorRef)
   case class UnregisterAuction(actor: ActorRef)
-  case class MatchingAuctions(auctions: Seq[ActorRef])
+  case class MatchingAuctions(auctions: Set[ActorRef])
 }
 
 class AuctionSearch extends Actor {
@@ -20,7 +20,7 @@ class AuctionSearch extends Actor {
     case Search(pattern) =>
       val actors = auctions.filter {
         case (actor, item) => item.name contains pattern
-      }.keys.toSeq
+      }.keys.toSet
 
       sender ! MatchingAuctions(actors)
     case RegisterAuction(item, actor) =>

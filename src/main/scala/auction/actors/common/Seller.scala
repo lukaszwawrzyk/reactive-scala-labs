@@ -1,6 +1,6 @@
 package auction.actors.common
 
-import akka.actor.{Actor, ActorRef, Props}
+import akka.actor.{Actor, ActorRef, ActorRefFactory, Props}
 import akka.event.LoggingReceive
 import auction.Config
 import auction.actors.common.Seller._
@@ -14,10 +14,20 @@ object Seller {
 
   private case object TryRelist
 
-  def props(auctionFactory: Item => Props): Props = Props(new Seller(auctionFactory))
+  def props(auctionFactory: AuctionFactory): Props = Props(new Seller(auctionFactory))
+
+  trait AuctionFactory {
+    def create(actorRefFactory: ActorRefFactory, name: String, item: Item): ActorRef
+  }
+
+  case class BasicAuctionFactory(propsFactory: Item => Props) extends AuctionFactory {
+    override def create(actorRefFactory: ActorRefFactory, name: String, item: Item): ActorRef = {
+      actorRefFactory.actorOf(propsFactory(item), name)
+    }
+  }
 }
 
-class Seller(private val auctionFactory: Item => Props) extends Actor {
+class Seller(private val auctionFactory: AuctionFactory) extends Actor {
   override def receive: Receive = preInit
 
   val preInit: Receive = LoggingReceive {
@@ -57,7 +67,7 @@ class Seller(private val auctionFactory: Item => Props) extends Actor {
   def createAuctions(items: List[Item]): Map[Item, ActorRef] = {
     items.map { item =>
       val actorName = s"auction-${Random.nextInt()}"
-      val auctionActor = context.actorOf(auctionFactory(item), actorName)
+      val auctionActor = auctionFactory.create(context, actorName, item)
       item -> auctionActor
     }.toMap
   }

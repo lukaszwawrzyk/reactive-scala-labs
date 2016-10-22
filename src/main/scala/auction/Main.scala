@@ -2,8 +2,9 @@ package auction
 
 import java.util.concurrent.TimeUnit
 
-import akka.actor.{ActorSystem, Props}
+import akka.actor.ActorSystem
 import auction.actors.become.AuctionBecome
+import auction.actors.common.Seller.{AuctionFactory, BasicAuctionFactory}
 import auction.actors.common.{AuctionSearch, Buyer, Seller}
 import auction.model.{Item, Money}
 
@@ -27,10 +28,10 @@ object Config {
 }
 
 object Main extends App {
-//  runWith(AuctionFsm.props)
-  runWith(AuctionBecome.props)
+//  runWith(BasicAuctionFactory(AuctionFsm.props))
+  runWith(BasicAuctionFactory(AuctionBecome.props))
 
-  def runWith(propsFactory: Item => Props) = {
+  def runWith(auctionFactory: AuctionFactory) = {
     val system = ActorSystem("auction-system")
 
     def startForItem(itemType: String) = {
@@ -44,7 +45,7 @@ object Main extends App {
         itemNumbers map createItem
       }
 
-      val seller = system.actorOf(Seller.props(propsFactory), s"seller-$itemType")
+      val seller = system.actorOf(Seller.props(auctionFactory), s"seller-$itemType")
       seller ! Seller.Init(items)
 
       val buyers = {
