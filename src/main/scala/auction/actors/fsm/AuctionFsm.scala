@@ -1,60 +1,86 @@
 package auction.actors.fsm
 
-import akka.actor.{ActorRef, FSM, Props}
+import akka.actor.{ActorRef, Props}
+import akka.persistence.fsm.PersistentFSM
+import akka.persistence.fsm.PersistentFSM._
 import auction.Config
-import auction.actors.common.Auction._
-import auction.actors.common.{Auction, Buyer, Seller}
+import auction.actors.common.{AuctionSearch, Buyer, Seller}
 import auction.actors.fsm.AuctionFsm._
 import auction.model._
+
+import scala.concurrent.duration._
+import scala.reflect.ClassTag
 
 object AuctionFsm {
   def props(item: Item): Props = Props(new AuctionFsm(item))
 
-  sealed trait State
-  case object Idle extends State
-  case object Created extends State
-  case object Ignored extends State
-  case object Activated extends State
-  case object Sold extends State
+  case class Bid(value: Money, bidder: ActorRef)
 
-  sealed trait Data
-  case object NoBid extends Data
-  case class CurrentBid(value: Money, buyer: ActorRef) extends Data
+  sealed trait AuctionCommand
+  case object StartAuction extends AuctionCommand
+  case object RelistAuction extends AuctionCommand
+  case class MakeBid(value: Money) extends AuctionCommand
+
+  sealed abstract class AuctionState(val identifier: String) extends FSMState
+  case object Idle extends AuctionState("idle")
+  case object Created extends AuctionState("created")
+  case object Ignored extends AuctionState("ignored")
+  case object Activated extends AuctionState("activated")
+  case object Sold extends AuctionState("sold")
+
+  sealed trait AuctionData {
+    def auctionStart: Option[EpochMillis]
+    def auctionEnd: Option[EpochMillis] = auctionStart map (_ + Config.AuctionBiddingTime.toMillis)
+  }
+  case class NoBid(auctionStart: Option[EpochMillis]) extends AuctionData
+  case class CurrentBid(bid: Bid, auctionStart: Option[EpochMillis]) extends AuctionData
+
+  sealed trait AuctionEvent
+  case class AuctionStarted(startTime: EpochMillis) extends AuctionEvent
+  case class AuctionEnded(bid: Option[Bid]) extends AuctionEvent
+  case object AuctionStarted { def now() = AuctionStarted(System.currentTimeMillis()) }
+  case class BidderBid(bid: Bid) extends AuctionEvent
 
   private case object BiddingTimePassed
 }
 
-class AuctionFsm(val item: Item) extends FSM[State, Data] with Auction {
-  startWith(Idle, NoBid)
+class AuctionFsm(val item: Item) extends PersistentFSM[AuctionState, AuctionData, AuctionEvent] {
+  override def domainEventClassTag = implicitly[ClassTag[AuctionEvent]]
+
+  override def persistenceId: String = s"auction: $item"
+
+  startWith(Idle, NoBid(None))
 
   when (Idle) {
-    case Event(Start, _) =>
-      goto (Created)
+    case Event(StartAuction, _) =>
+      goto (Created) applying AuctionStarted.now()
   }
 
   when (Created) {
-    case Event(Bid(value), _) =>
-      goto (Activated) using CurrentBid(value, sender)
+    case Event(MakeBid(value), _) =>
+      goto (Activated) applying BidderBid(Bid(value, sender))
     case Event(BiddingTimePassed, _) =>
-      goto (Ignored)
+      goto (Ignored) applying AuctionEnded(bid = None)
   }
 
   when (Ignored, stateTimeout = Config.AuctionDeleteTime) {
-    case Event(Relist, _) =>
+    case Event(RelistAuction, _) =>
       println(s"Auction for ${item.name} was relisted")
-      goto (Created)
+      goto (Created) applying AuctionStarted.now()
     case Event(StateTimeout, _) =>
       println(s"Auction for ${item.name} ended without buyer")
       auctionEnded()
   }
 
   when (Activated) {
-    case Event(Bid(newBidValue), CurrentBid(currentBidValue, currentBuyer)) if newBidValue > currentBidValue =>
+    case Event(MakeBid(newBidValue), CurrentBid(Bid(currentBidValue, currentBuyer), _)) if newBidValue > currentBidValue =>
       println(s"item ${item.name} now has value $newBidValue")
-      currentBuyer ! Buyer.OfferOverbid(newBidValue)
-      stay using CurrentBid(newBidValue, sender)
-    case Event(BiddingTimePassed, CurrentBid(value, buyer)) =>
-      goto (Sold)
+      stay applying BidderBid(Bid(newBidValue, sender)) andThen {
+        case _ =>
+          currentBuyer ! Buyer.OfferOverbid(newBidValue)
+      }
+    case Event(BiddingTimePassed, CurrentBid(bid, _)) =>
+      goto (Sold) applying AuctionEnded(bid = Some(bid))
   }
 
   when (Sold, stateTimeout = Config.AuctionDeleteTime) {
@@ -66,7 +92,7 @@ class AuctionFsm(val item: Item) extends FSM[State, Data] with Auction {
     case Activated -> Sold =>
       unregisterInAuctionSearch()
       stateData match {
-        case CurrentBid(value, buyer) =>
+        case CurrentBid(Bid(value, buyer), _) =>
           buyer ! Buyer.AuctionWon(item, price = value)
         case _ => ()
       }
@@ -74,22 +100,50 @@ class AuctionFsm(val item: Item) extends FSM[State, Data] with Auction {
       unregisterInAuctionSearch()
     case _ -> Created =>
       registerInAuctionSearch()
-      startBiddingTimer()
+  }
 
+  def applyEvent(domainEvent: AuctionEvent, currentData: AuctionData): AuctionData = {
+    domainEvent match {
+      case AuctionStarted(startTime) =>
+        startBiddingTimer(Config.AuctionBiddingTime)
+        NoBid(Some(startTime))
+      case BidderBid(bid) =>
+        CurrentBid(bid, currentData.auctionStart)
+      case AuctionEnded(maybeBid) =>
+        maybeBid.map(CurrentBid(_, auctionStart = None)).getOrElse(NoBid(None))
+    }
   }
 
   whenUnhandled {
     case _ => stay
   }
 
-  initialize()
+  override def onRecoveryCompleted(): Unit = {
+    println("RECOVERY COMPLETED")
+    stateData.auctionEnd
+      .map(endTime => endTime - System.currentTimeMillis())
+      .filter(_ >= 0)
+      .foreach { auctionTimeLeft =>
+        registerInAuctionSearch()
+        startBiddingTimer(auctionTimeLeft.millis)
+      }
+  }
 
-  private def startBiddingTimer(): Unit = {
-    setTimer("auction bidding time", BiddingTimePassed, Config.AuctionBiddingTime, repeat = false)
+  private def startBiddingTimer(timeout: FiniteDuration): Unit = {
+    println(s"START TIMER FOR ${timeout.toSeconds}")
+    setTimer("auction bidding time", BiddingTimePassed, timeout, repeat = false)
   }
 
   private def auctionEnded(): State = {
     context.parent ! Seller.AuctionEnded(item)
-    stop()
+    stop
+  }
+
+  private def registerInAuctionSearch(): Unit = {
+    context.actorSelection(Config.AuctionSearchPath) ! AuctionSearch.RegisterAuction(item, self)
+  }
+
+  private def unregisterInAuctionSearch(): Unit = {
+    context.actorSelection(Config.AuctionSearchPath) ! AuctionSearch.UnregisterAuction(self)
   }
 }

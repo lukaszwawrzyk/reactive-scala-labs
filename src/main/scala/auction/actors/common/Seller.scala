@@ -4,6 +4,7 @@ import akka.actor.{Actor, ActorRef, ActorRefFactory, Props}
 import akka.event.LoggingReceive
 import auction.Config
 import auction.actors.common.Seller._
+import auction.actors.fsm.AuctionFsm
 import auction.model.Item
 
 import scala.util.Random
@@ -48,7 +49,7 @@ class Seller(private val auctionFactory: AuctionFactory) extends Actor {
       }
     case TryRelist =>
       val auctionsToAttemptRelist = auctions.values.filter(_ => scala.util.Random.nextBoolean())
-      auctionsToAttemptRelist foreach (_ ! Auction.Relist)
+      auctionsToAttemptRelist foreach (_ ! AuctionFsm.RelistAuction)
   }
 
   private def startRelistTimer() = {
@@ -59,7 +60,7 @@ class Seller(private val auctionFactory: AuctionFactory) extends Actor {
     val auctions = createAuctions(items)
 
     val auctionActors = auctions.values
-    auctionActors foreach (_ ! Auction.Start)
+    auctionActors foreach (_ ! AuctionFsm.StartAuction)
 
     auctions
   }

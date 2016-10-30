@@ -3,9 +3,9 @@ package auction
 import java.util.concurrent.TimeUnit
 
 import akka.actor.ActorSystem
-import auction.actors.become.AuctionBecome
 import auction.actors.common.Seller.{AuctionFactory, BasicAuctionFactory}
 import auction.actors.common.{AuctionSearch, Buyer, Seller}
+import auction.actors.fsm.AuctionFsm
 import auction.model.{Item, Money}
 
 import scala.concurrent.Await
@@ -13,14 +13,17 @@ import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.util.Random
 
 object Config {
-  def auctionsPerItemType() = Random.nextInt(2) + 2
-  def buyersPerItemType() = Random.nextInt(20) + 15
-  def buyerBudget() = Random.nextInt(1000) + 100
+  def auctionsPerItemType() = 1
+  def buyersPerItemType() = 20
+  def buyerBudget() = 1000
   val MinBidDelta: Money = 10
+
+  val ItemNames = 'A' to 'A'
 
   val AuctionSearchPath = "/user/auction-search"
 
-  val SearchRetryDelay = FiniteDuration(2, TimeUnit.SECONDS)
+  val SearchRetryDelay = FiniteDuration(200, TimeUnit.MILLISECONDS)
+  val OverbidDelay = FiniteDuration(3, TimeUnit.SECONDS)
   val BuyerBiddingInterval = FiniteDuration(5, TimeUnit.SECONDS)
   val AuctionBiddingTime = FiniteDuration(20, TimeUnit.SECONDS)
   val AuctionDeleteTime = FiniteDuration(5, TimeUnit.SECONDS)
@@ -28,8 +31,7 @@ object Config {
 }
 
 object Main extends App {
-//  runWith(BasicAuctionFactory(AuctionFsm.props))
-  runWith(BasicAuctionFactory(AuctionBecome.props))
+  runWith(BasicAuctionFactory(AuctionFsm.props))
 
   def runWith(auctionFactory: AuctionFactory) = {
     val system = ActorSystem("auction-system")
@@ -49,8 +51,10 @@ object Main extends App {
       seller ! Seller.Init(items)
 
       val buyers = {
-        def createBuyer() = system.actorOf(Buyer.props(itemType, Config.buyerBudget()), s"buyer-$itemType-${Random.nextInt}")
-        (1 to Config.buyersPerItemType()) map (_ => createBuyer())
+        def createBuyer(initBid: => Option[Money] = None) = {
+          system.actorOf(Buyer.props(itemType, Config.buyerBudget(), initBid), s"buyer-$itemType-${Random.nextInt}")
+        }
+        (1 to Config.buyersPerItemType()).map(_ => createBuyer()) // :+ createBuyer(Some(1000))
       }
 
       buyers foreach (_ ! Buyer.Start)
@@ -58,7 +62,7 @@ object Main extends App {
 
     system.actorOf(AuctionSearch.props, "auction-search")
 
-    ('A' to 'E') map (_.toString) foreach startForItem
+    Config.ItemNames map (_.toString) foreach startForItem
 
 
     Await.ready(system.whenTerminated, Duration.Inf)

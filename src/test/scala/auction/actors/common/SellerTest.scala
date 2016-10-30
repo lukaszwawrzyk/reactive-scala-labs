@@ -2,6 +2,7 @@ package auction.actors.common
 
 import akka.testkit.TestProbe
 import auction.actors.common.Seller.AuctionFactory
+import auction.actors.fsm.AuctionFsm
 import auction.model.Item
 import helpers.AkkaTest
 
@@ -11,8 +12,8 @@ class SellerTest extends AkkaTest {
   it should "create auctions for given items" in new SellerFixture {
     seller ! Seller.Init(List(item1, item2))
 
-    auction1.expectMsg(Auction.Start)
-    auction2.expectMsg(Auction.Start)
+    auction1.expectMsg(AuctionFsm.StartAuction)
+    auction2.expectMsg(AuctionFsm.StartAuction)
   }
 
   it should "stop itself after all auctions ended" in new SellerFixture {
