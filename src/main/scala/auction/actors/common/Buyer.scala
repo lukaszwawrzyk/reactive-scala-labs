@@ -49,16 +49,13 @@ class Buyer(
     case OfferOverbid(overbidValue) =>
       val nextBid = overbidValue + Config.MinBidDelta
       if (nextBid <= budget) {
-        log(s"will retry with $nextBid after being overbid (limit $budget)")
         context.system.scheduler.scheduleOnce(Config.OverbidDelay, self, BidNow(nextBid))(context.dispatcher)
       } else {
-        log("out of money")
         context stop self
       }
     case BidNow(value) =>
       auction ! AuctionFsm.MakeBid(value)
     case AuctionWon(Item(itemName), price) =>
-      log(s"bought $itemName for $price")
       context stop self
   }
 
@@ -69,9 +66,5 @@ class Buyer(
   private def randomBid() = {
     val bidValue = initBid.getOrElse(BigDecimal(Random.nextInt(budget.toInt / 2)))
     AuctionFsm.MakeBid(bidValue)
-  }
-
-  private def log(message: String): Unit = {
-    println(s"[${context.self.path.name}] $message")
   }
 }

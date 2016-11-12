@@ -65,16 +65,13 @@ class AuctionFsm(val item: Item) extends PersistentFSM[AuctionState, AuctionData
 
   when (Ignored, stateTimeout = Config.AuctionDeleteTime) {
     case Event(RelistAuction, _) =>
-      println(s"Auction for ${item.name} was relisted")
       goto (Created) applying AuctionStarted.now()
     case Event(StateTimeout, _) =>
-      println(s"Auction for ${item.name} ended without buyer")
       auctionEnded()
   }
 
   when (Activated) {
     case Event(MakeBid(newBidValue), CurrentBid(Bid(currentBidValue, currentBuyer), _)) if newBidValue > currentBidValue =>
-      println(s"item ${item.name} now has value $newBidValue")
       val bidder = sender()
       stay applying BidderBid(Bid(newBidValue, bidder)) andThen {
         case _ =>
@@ -121,7 +118,6 @@ class AuctionFsm(val item: Item) extends PersistentFSM[AuctionState, AuctionData
   }
 
   override def onRecoveryCompleted(): Unit = {
-    println("RECOVERY COMPLETED")
     stateData.auctionEnd
       .map(endTime => endTime - System.currentTimeMillis())
       .filter(_ >= 0)
@@ -132,7 +128,6 @@ class AuctionFsm(val item: Item) extends PersistentFSM[AuctionState, AuctionData
   }
 
   private def startBiddingTimer(timeout: FiniteDuration): Unit = {
-    println(s"START TIMER FOR ${timeout.toSeconds}")
     setTimer("auction bidding time", BiddingTimePassed, timeout, repeat = false)
   }
 

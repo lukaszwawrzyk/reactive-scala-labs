@@ -8,21 +8,21 @@ import auction.actors.common._
 import auction.actors.fsm.AuctionFsm
 import auction.model.{Item, Money}
 import com.typesafe.config.ConfigFactory
-
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Await
 import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.util.Random
 
 object Config {
-  def auctionsPerItemType() = 3
+  def auctionsPerItemType() = 1
 
-  def buyersPerItemType() = 15
+  def buyersPerItemType() = 2
 
   def buyerBudget() = 1000
 
   val MinBidDelta: Money = 10
 
-  val ItemNames = 'A' to 'D'
+  val ItemNames = 'A' to 'A'
 
   val AuctionSearchPath = "/user/auction-search"
   val NotifierPath = "/user/notifier"

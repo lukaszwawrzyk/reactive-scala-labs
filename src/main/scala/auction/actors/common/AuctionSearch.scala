@@ -24,7 +24,6 @@ class AuctionSearch extends Actor {
 
       sender ! MatchingAuctions(actors)
     case RegisterAuction(item, actor) =>
-      println(s"registered auction for item ${item.name}")
       context become keepingAuctions(auctions + (actor -> item))
     case UnregisterAuction(actor) =>
       context become keepingAuctions(auctions - actor)
