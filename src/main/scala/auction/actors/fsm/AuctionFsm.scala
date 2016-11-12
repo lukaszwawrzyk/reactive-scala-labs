@@ -4,7 +4,7 @@ import akka.actor.{ActorRef, Props}
 import akka.persistence.fsm.PersistentFSM
 import akka.persistence.fsm.PersistentFSM._
 import auction.Config
-import auction.actors.common.{AuctionSearch, Buyer, Seller}
+import auction.actors.common.{AuctionSearch, Buyer, Notifier, Seller}
 import auction.actors.fsm.AuctionFsm._
 import auction.model._
 
@@ -75,8 +75,10 @@ class AuctionFsm(val item: Item) extends PersistentFSM[AuctionState, AuctionData
   when (Activated) {
     case Event(MakeBid(newBidValue), CurrentBid(Bid(currentBidValue, currentBuyer), _)) if newBidValue > currentBidValue =>
       println(s"item ${item.name} now has value $newBidValue")
-      stay applying BidderBid(Bid(newBidValue, sender)) andThen {
+      val bidder = sender()
+      stay applying BidderBid(Bid(newBidValue, bidder)) andThen {
         case _ =>
+          context.actorSelection(Config.NotifierPath) ! Notifier.AuctionUpdated(item, bidder, newBidValue)
           currentBuyer ! Buyer.OfferOverbid(newBidValue)
       }
     case Event(BiddingTimePassed, CurrentBid(bid, _)) =>
