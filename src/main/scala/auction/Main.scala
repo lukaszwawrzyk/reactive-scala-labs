@@ -4,7 +4,7 @@ import java.util.concurrent.TimeUnit
 
 import akka.actor.ActorSystem
 import auction.actors.common.Seller.{AuctionFactory, BasicAuctionFactory}
-import auction.actors.common.{AuctionSearch, Buyer, Seller}
+import auction.actors.common.{Buyer, MasterSearch, Seller}
 import auction.actors.fsm.AuctionFsm
 import auction.model.{Item, Money}
 
@@ -60,10 +60,9 @@ object Main extends App {
       buyers foreach (_ ! Buyer.Start)
     }
 
-    system.actorOf(AuctionSearch.props, "auction-search")
+    system.actorOf(MasterSearch.props, "auction-search")
 
     Config.ItemNames map (_.toString) foreach startForItem
-
 
     Await.ready(system.whenTerminated, Duration.Inf)
   }

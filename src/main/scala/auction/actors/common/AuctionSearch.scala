@@ -1,7 +1,7 @@
 package auction.actors.common
 
 import akka.actor.{Actor, ActorRef, Props}
-import auction.actors.common.AuctionSearch.{MatchingAuctions, RegisterAuction, Search, UnregisterAuction}
+import auction.actors.common.AuctionSearch._
 import auction.model.Item
 
 object AuctionSearch {
@@ -11,6 +11,7 @@ object AuctionSearch {
   case class RegisterAuction(item: Item, actor: ActorRef)
   case class UnregisterAuction(actor: ActorRef)
   case class MatchingAuctions(auctions: Set[ActorRef])
+  case object Ack
 }
 
 class AuctionSearch extends Actor {
@@ -24,9 +25,10 @@ class AuctionSearch extends Actor {
 
       sender ! MatchingAuctions(actors)
     case RegisterAuction(item, actor) =>
-      println(s"registered auction for item ${item.name}")
       context become keepingAuctions(auctions + (actor -> item))
+      sender ! Ack
     case UnregisterAuction(actor) =>
       context become keepingAuctions(auctions - actor)
+      sender ! Ack
   }
 }
